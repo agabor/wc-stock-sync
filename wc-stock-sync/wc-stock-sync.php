@@ -34,12 +34,14 @@ function wc_custom_handle_post_request(WP_REST_Request $request) {
         array_shift($data);
 
         global $wpdb;
-        $wpdb->query('START TRANSACTION');
+        //$wpdb->query('START TRANSACTION');
 
         $valid = 0;
         $invalid = 0;
 
         foreach ($data as $item) {
+                if ($item == null || trim($item) == '')
+                        continue;
                 $data_parts = explode(";", rtrim($item, ";"));
                 if (count($data_parts) == 3 && is_numeric($data_parts[1]) && is_numeric($data_parts[2])) {
                         $sku = $data_parts[0];
@@ -52,11 +54,13 @@ function wc_custom_handle_post_request(WP_REST_Request $request) {
                         $invalid += 1;
                 }
         }
-        $wpdb->query('COMMIT');
+        //$wpdb->query('COMMIT');
 
         if (!wp_next_scheduled('product_update_event')) {
                 wp_schedule_event(time(), 'every_minute', 'product_update_event');
         }
+
+        log_message("Csv received, valid: $valid, invalid: $invalid.");
 
         return new WP_REST_Response(['valid' => $valid, 'invalid' => $invalid], 200);
 }
@@ -131,7 +135,7 @@ register_deactivation_hook(__FILE__, 'delete_updateable_products_table');
 function delete_updateable_products_table() {
         global $wpdb;
         $table_name = $wpdb->prefix . 'updateable_products';
-        $wpdb->query("DROP TABLE IF EXISTS $table_name");
+        $wpdb->query("DROP TABLE IF EXISTS $table_name;");
 }
 
 function update_products($time_limit) {
@@ -143,14 +147,17 @@ function update_products($time_limit) {
         $unchanged = 0;
         $failed = 0;
 
+        $max_id = -1;
         while (time() < $end_time) {
-                $products = $wpdb->get_results("SELECT * FROM $table_name LIMIT 100");
+                $products = $wpdb->get_results("SELECT * FROM $table_name WHERE id > $max_id ORDER BY id LIMIT 100;");
 
+                log_message("Processing " . count($products) . " product(s)");
                 foreach ($products as $row) {
                         if(time() > $end_time) {
                                 break;
                         }
                         $product_id = wc_get_product_id_by_sku($row->sku);
+                        //log_message("Processing $product_id with sku: " . $row->sku);
                         if ($product_id == 0){
                                 $failed += 1;
                                 log_message("Product not found with sku: " . $row->sku);
@@ -159,7 +166,8 @@ function update_products($time_limit) {
                                 if($product) {
                                         $sq = intval($product->get_stock_quantity());
                                         $sp = floatval($product->get_regular_price());
-                                        if ($sq != $row->stock_quantity || $sp != $row->regular_price) { 
+                                        if ($sq != $row->stock_quantity || $sp != $row->regular_price) {
+                                                log_message("Updating product with sku $row->sku quantity: $sq -> $row->stock_quantity price: $sp -> $row->regular_price");
                                                 $updateable += 1;
                                                 $product->set_stock_quantity($row->stock_quantity);
                                                 $product->set_regular_price($row->regular_price);
@@ -172,14 +180,24 @@ function update_products($time_limit) {
                                         log_message("Product not found with id: " . $product_id);
                                 }
                         }
-                        $wpdb->delete($table_name, array('id' => $row->id), array('%d'));
+                        if ($max_id < $row->id)
+                                $max_id = $row->id;
+                        //This does not work!
+                        //$sql = $wpdb->prepare("DELETE FROM $table_name WHERE id = %d ;", $row->id);
+                        //$wpdb->query($sql);
                 }
-                if (sizeof($products) < 100) {
+
+
+                if (count($products) < 100) {
                         wp_clear_scheduled_hook('product_update_event');
+                        log_message('CRON job cleared.');
                         break;
                 }
         }
-
+        //This works!
+        log_message("Deleting rows wit id lower than $max_id");
+        $sql = $wpdb->prepare("DELETE FROM $table_name WHERE id < %d ;", $max_id);
+        $wpdb->query($sql);
         log_message("updated: $updateable, unchanged: $unchanged, failed: $failed");
 }
 
