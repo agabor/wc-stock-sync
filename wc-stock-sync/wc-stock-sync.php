@@ -25,7 +25,7 @@ add_action('rest_api_init', function () {
         'callback' => 'wc_custom_handle_get_duplicate_product_skus',
         'permission_callback' => 'wc_custom_check_api_permission'
     ));
-    register_rest_route('wc-custom/v1', '/stock-sync/manage_stock', array(
+    register_rest_route('wc-custom/v1', '/stock-sync/manage-stock', array(
         'methods' => 'POST',
         'callback' => 'wc_custom_handle_post_turn_on_manage_stock',
         'permission_callback' => 'wc_custom_check_api_permission'
@@ -131,9 +131,11 @@ function wc_custom_handle_post_turn_on_manage_stock(WP_REST_Request $request) {
         $count = 0;
 
         foreach ($products as $product) {
-                if ($product->get_manage_stock())
+                if ($product->get_manage_stock()) {
                         continue;
+                }
                 $product->set_manage_stock(true);
+                $product->set_stock_quantity(1);
                 $product->save();
                 $count += 1;
         }
