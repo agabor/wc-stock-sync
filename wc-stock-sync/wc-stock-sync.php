@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: WooCommerce Stock Sync
- * Description: Synchronice WooCommerce stock info with a simple API call
+ * Description: Synchronise WooCommerce stock info with a simple API call
  * Version: 1.0
  * Author: Code Sharp Kft
  * WC requires at least: 3.0
